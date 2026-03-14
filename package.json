@@ -1,13 +1,18 @@
 {
-  "name": "svg_facemesh",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "name": "facemesh-distributed",
+  "version": "2.0.0",
+  "description": "分布式 FaceMesh 面捕系统 - 六角恐龙",
+  "main": "capture/server.js",
   "scripts": {
-    "start": "npx http-server . -p 12666",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "echo '请使用以下命令启动：' && echo '  npm run capture  - 电脑 B（面捕端）' && echo '  npm run renderer - 电脑 A（渲染端）'",
+    "capture": "node capture/capture-server.js",
+    "renderer": "node renderer/renderer-server.js",
+    "install-deps": "npm install ws"
   },
-  "keywords": [],
+  "dependencies": {
+    "ws": "^8.14.2"
+  },
+  "keywords": ["facemesh", "websocket", "motion-capture", "axolotl"],
   "author": "",
   "license": "ISC"
 }

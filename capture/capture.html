@@ -75,47 +75,87 @@
         .connected { background: #d1fae5; color: #065f46; }
         .disconnected { background: #fee2e2; color: #991b1b; }
         .connecting { background: #fef3c7; color: #92400e; }
-        #dataPreview {
+        .config-panel {
             margin-top: 15px;
-            padding: 10px;
+            padding: 15px;
             background: #f3f4f6;
             border-radius: 8px;
+        }
+        .config-panel label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #374151;
+        }
+        .config-panel input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            font-size: 14px;
             font-family: monospace;
-            font-size: 12px;
-            max-height: 200px;
-            overflow: auto;
+        }
+        .config-panel button {
+            margin-top: 10px;
+            padding: 8px 16px;
+            background: #10b981;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .config-panel button:hover {
+            background: #059669;
         }
     </style>
 </head>
 <body>
     <h1>📹 FaceMesh 面捕端</h1>
     <div class="status">电脑 B - 面部数据采集</div>
-    
+
     <div class="container">
         <div class="video-wrapper">
             <video id="video" width="320" height="240" playsinline autoplay muted></video>
             <div id="fps">FPS: 0</div>
         </div>
-        
+
         <div class="controls">
             <button id="startBtn">🚀 启动面捕</button>
             <button id="stopBtn" disabled>⏹ 停止</button>
         </div>
 
-        <div id="status" style="color:white;margin:10px 0;text-align:center;">点击"启动"开始</div>
+        <div id="status" style="color:#6b7280;margin:10px 0;text-align:center;">点击"启动"开始</div>
         <div id="connectionStatus" class="disconnected">未连接 WebSocket</div>
+        
+        <!-- 🔥 WebSocket 配置面板 -->
+        <div class="config-panel">
+            <label for="wsUrl">🔧 WebSocket 服务器地址：</label>
+            <input type="text" id="wsUrl" value="ws://localhost:16666/ws" placeholder="例如：ws://192.168.1.100:16666/ws">
+            <button onclick="saveAndReconnect()">💾 保存并重新连接</button>
+        </div>
     </div>
 
     <!-- 使用 MediaPipe Tasks Vision API (新版本，更稳定) -->
     <script type="module">
         import { FilesetResolver, FaceLandmarker } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/+esm';
-        // 配置
-        const WS_URL = `ws://${window.location.hostname}:16666/ws`;
+        
+        // 🔥 配置：从 localStorage 读取 WebSocket 地址
+        let WS_URL = localStorage.getItem('facemesh_ws_url') || `ws://${window.location.hostname}:16666/ws`;
+        
         const VIDEO_WIDTH = 320;
         const VIDEO_HEIGHT = 240;
         const DEBUG_MODE = false;
 
         window.DEBUG_MODE = DEBUG_MODE;
+        
+        // 🔥 更新输入框的值
+        document.addEventListener('DOMContentLoaded', () => {
+            const wsUrlInput = document.getElementById('wsUrl');
+            if (wsUrlInput) {
+                wsUrlInput.value = WS_URL;
+            }
+        });
 
         // 状态
         let ws = null;
@@ -124,7 +164,7 @@
         let fps = 0;
         let lastFrameTime = performance.now();
         let faceLandmarker = null;
-        
+
         // 🔥 发送限流：30 FPS
         let lastSendTime = 0;
         const SEND_INTERVAL = 1000 / 30; // 33ms
@@ -135,11 +175,18 @@
         const stopBtn = document.getElementById('stopBtn');
         const connectionStatus = document.getElementById('connectionStatus');
         const statusEl = document.getElementById('status');
+        const wsUrlInput = document.getElementById('wsUrl');
 
         // 连接 WebSocket
         function connectWebSocket() {
             connectionStatus.className = 'connecting';
             connectionStatus.textContent = '连接中...';
+            
+            // 关闭旧连接
+            if (ws) {
+                ws.close();
+            }
+            
             ws = new WebSocket(WS_URL);
             ws.onopen = () => {
                 connectionStatus.className = 'connected';
@@ -155,6 +202,28 @@
             };
             ws.onerror = (error) => console.error('WebSocket 错误:', error);
         }
+        
+        // 🔥 保存配置并重新连接
+        window.saveAndReconnect = function() {
+            const newUrl = wsUrlInput.value.trim();
+            if (!newUrl) {
+                alert('请输入有效的 WebSocket 地址');
+                return;
+            }
+            
+            // 验证格式
+            if (!newUrl.startsWith('ws://') && !newUrl.startsWith('wss://')) {
+                alert('WebSocket 地址必须以 ws:// 或 wss:// 开头');
+                return;
+            }
+            
+            // 保存到 localStorage
+            localStorage.setItem('facemesh_ws_url', newUrl);
+            WS_URL = newUrl;
+            
+            alert('✅ 已保存配置，正在重新连接...');
+            connectWebSocket();
+        };
 
         // 发送面捕数据
         function sendFaceMeshData(landmarks) {
@@ -236,7 +305,16 @@
         async function startCapture() {
             try {
                 if (!faceLandmarker) await initFaceLandmarker();
+
+                // 🔥 兼容性检查：获取摄像头权限
+                const getUserMedia = navigator.mediaDevices?.getUserMedia || 
+                                     navigator.webkitGetUserMedia || 
+                                     navigator.mozGetUserMedia;
                 
+                if (!getUserMedia) {
+                    throw new Error('浏览器不支持摄像头访问，请使用 Chrome/Edge 浏览器，并确保使用 http://localhost 或 https:// 访问');
+                }
+
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: { width: VIDEO_WIDTH, height: VIDEO_HEIGHT }
                 });
@@ -252,7 +330,16 @@
                 processFrame();
             } catch (error) {
                 statusEl.textContent = '❌ 错误：' + error.message;
-                console.error(error);
+                console.error('启动错误:', error);
+                
+                // 🔥 提供更详细的错误提示
+                if (error.name === 'NotAllowedError') {
+                    statusEl.textContent = '❌ 摄像头权限被拒绝，请在浏览器地址栏右侧允许摄像头权限';
+                } else if (error.name === 'NotFoundError') {
+                    statusEl.textContent = '❌ 未找到摄像头设备';
+                } else if (location.protocol !== 'http:' && location.protocol !== 'https:') {
+                    statusEl.textContent = '❌ 请使用 http://localhost 或文件服务器访问（不能直接打开文件）';
+                }
             }
         }
 

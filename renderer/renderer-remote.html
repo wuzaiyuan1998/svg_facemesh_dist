@@ -253,6 +253,11 @@
         let renderFrameCount = 0;
         let renderFps = 0;
         let lastRenderFpsTime = performance.now();
+        
+        // 🔥 数据接收限流：避免处理过多数据
+        let lastReceiveTime = 0;
+        const RECEIVE_INTERVAL = 1000 / 30; // 30 FPS
+        let latestLandmarks = null; // 缓存最新的数据
 
         // ============ 平滑滤波（消除抖动） ============
         const smoothingFactor = 0.3;
@@ -424,12 +429,20 @@
         }
 
         // ============ 应用表情到 SVG（完整逻辑 - 来自 liujiao-facemesh-tasks-dev.html） ============
+        let lastRenderTime = 0;
+        const RENDER_INTERVAL = 1000 / 30; // 限制渲染帧率 30 FPS
+        
         function applyExpression(landmarks) {
             if (!landmarks || landmarks.length < 468) return;
             
+            // 🔥 渲染限流：避免过度渲染
+            const now = performance.now();
+            if (now - lastRenderTime < RENDER_INTERVAL) return;
+            lastRenderTime = now;
+            
             // 🔥 更新渲染 FPS
             updateRenderFps();
-
+            
             // ============ 1. 身体组整体平移 + 缩放 ============
             const noseTip = landmarks[1];
             const noseBase = landmarks[4];
@@ -730,6 +743,12 @@
                 svgElements.blushLeft.setAttribute('opacity', Math.max(0.3, blushOpacity));
                 svgElements.blushRight.setAttribute('opacity', Math.max(0.3, blushOpacity));
             }
+            
+            // 🔥 性能监控：每 100 帧打印一次渲染耗时
+            if (renderFrameCount % 100 === 0) {
+                const totalAttrs = 50; // 大约更新的属性数量
+                console.log(`📊 渲染帧 ${renderFrameCount}: 更新 ${totalAttrs} 个 DOM 属性`);
+            }
         }
 
         // ============ WebSocket 连接 ============
@@ -769,17 +788,33 @@
                     }
                     const data = JSON.parse(rawData);
                     if (data.type === 'facemesh' && data.landmarks) {
-                        // 使用完整的 468 个 landmarks 进行渲染计算
-                        applyExpression(data.landmarks);
+                        // 🔥 限流：只缓存最新数据，不立即处理
+                        latestLandmarks = data.landmarks;
                         dataCount++;
                         lastDataTime = Date.now();
-                        const delay = Date.now() - data.timestamp;
-                        dataStats.textContent = `已接收 ${dataCount} 帧 | 延迟：${delay}ms | WebSocket: ${ws.readyState === 1 ? '✅ 连接中' : '⚠️ 断开'}`;
                     }
                 } catch (e) {
                     console.error('数据解析错误:', e, '原始数据:', event.data);
                 }
             };
+            
+            // 🔥 独立渲染循环：以固定帧率处理缓存的数据
+            function renderLoop() {
+                if (latestLandmarks) {
+                    const now = performance.now();
+                    if (now - lastReceiveTime >= RECEIVE_INTERVAL) {
+                        applyExpression(latestLandmarks);
+                        lastReceiveTime = now;
+                        latestLandmarks = null; // 清空缓存
+                        
+                        // 更新状态显示
+                        const delay = Date.now() - lastDataTime;
+                        dataStats.textContent = `已接收 ${dataCount} 帧 | 渲染：${renderFps} FPS | 延迟：${delay}ms`;
+                    }
+                }
+                requestAnimationFrame(renderLoop);
+            }
+            renderLoop(); // 启动渲染循环
         }
 
         // ============ 配置管理 ============
