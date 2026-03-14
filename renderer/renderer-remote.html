@@ -219,9 +219,10 @@
                 </g>
             </g>
 
-            <!-- ============ 图层 2: 泡泡（最上层，不跟随动捕） ============ -->
+            <!-- ============ 泡泡（在身体组内，跟随动捕） ============ -->
             <g id="bubble-container"></g>
-        </svg>
+        </g>
+    </svg>
 
         <!-- 渲染 FPS 显示 -->
         <div id="renderFps">渲染 FPS: 0</div>
@@ -367,12 +368,13 @@
 
         function createBubbleFromMouth(mouthLeft, mouthRight, mouthTop, mouthBottom, duration) {
             if (!svgElements.bubbleContainer) return;
-            
-            // 计算嘴巴中心位置
+
+            // 🔥 使用 landmarks 计算嘴巴在 SVG 中的原始位置（不受 transform 影响）
+            // landmarks 坐标是 0-1 归一化的，需要转换为 800x800 的 SVG 坐标
             const mouthCenterX = (mouthLeft.x + mouthRight.x) / 2;
             const mouthCenterY = (mouthTop.y + mouthBottom.y) / 2;
             
-            // 将归一化坐标转换为 SVG 坐标
+            // 🔥 转换为 SVG viewBox 坐标
             const svgX = mouthCenterX * 800;
             const svgY = mouthCenterY * 800;
             
@@ -382,7 +384,7 @@
             const durationBonus = duration / 100; // 张嘴时间加成
             const randomBonus = Math.random() * 10; // 随机大小：0-10
             const bubbleSize = Math.min(35, baseSize + durationBonus + randomBonus);
-            
+
             // 创建泡泡
             const bubble = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
             bubble.setAttribute('cx', svgX);
@@ -390,7 +392,8 @@
             bubble.setAttribute('r', bubbleSize);
             bubble.setAttribute('fill', 'url(#bubbleGrad)');
             bubble.setAttribute('stroke', '#e0f7fa');
-            bubble.setAttribute('stroke-width', 2);
+            bubble.setAttribute('stroke-width', '1.5');
+            bubble.setAttribute('opacity', '0.7'); // 🔥 初始透明度
             svgElements.bubbleContainer.appendChild(bubble);
 
             // 🔥 计算自然的水平漂移
@@ -413,11 +416,11 @@
                 bubble.setAttribute('cx', bubbleX);
                 bubble.setAttribute('cy', bubbleY);
                 
-                // 透明度渐变：从 1 到 0（在 y=150 时消失）
-                const opacity = 1 - (bubbleY - 150) / (svgY - 150);
+                // 🔥 透明度渐变：从 0.7 到 0（在 y=150 时消失）
+                const opacity = 0.7 * (bubbleY - 150) / (svgY - 150);
                 bubble.setAttribute('opacity', Math.max(0, opacity));
-                
-                if (bubbleY > 150 && opacity > 0) {
+
+                if (bubbleY > 150 && opacity > 0.05) {
                     requestAnimationFrame(moveBubble);
                 } else {
                     if (svgElements.bubbleContainer.contains(bubble)) {
