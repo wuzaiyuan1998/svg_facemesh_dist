@@ -346,31 +346,78 @@
             requestAnimationFrame(animateTail);
         }
 
-        // ============ 吐泡泡 ============
-        function createBubble() {
+        // ============ 吐泡泡（闭嘴时触发，基于刚才张嘴的持续时间） ============
+        let lastBubbleTime = 0;
+        const BUBBLE_INTERVAL = 500; // 最小间隔 500ms，避免连续吐泡泡
+        let isMouthOpenPrev = false; // 上一帧嘴巴状态
+        
+        // 🔥 张嘴持续时间计时（用于泡泡大小）
+        let mouthOpenStartTime = 0; // 嘴巴开始张开的时间
+        let mouthOpenDuration = 0;  // 张嘴持续时间（毫秒）
+        let lastMouthOpenDuration = 0; // 上一次张嘴的持续时间（用于吐泡泡）
+        
+        // 🔥 泡泡漂移状态（让泡泡运动更自然）
+        let lastBubbleDrift = 0; // 上一个泡泡的水平漂移速度
+        let driftTrend = 0; // 当前漂移趋势（-1 到 1）
+
+        function createBubbleFromMouth(mouthLeft, mouthRight, mouthTop, mouthBottom, duration) {
             if (!svgElements.bubbleContainer) return;
+            
+            // 计算嘴巴中心位置
+            const mouthCenterX = (mouthLeft.x + mouthRight.x) / 2;
+            const mouthCenterY = (mouthTop.y + mouthBottom.y) / 2;
+            
+            // 将归一化坐标转换为 SVG 坐标
+            const svgX = mouthCenterX * 800;
+            const svgY = mouthCenterY * 800;
+            
+            // 🔥 根据张嘴持续时间计算泡泡大小 + 随机系数
+            // 基础大小 8，张嘴时间加成，再加上随机大小
+            const baseSize = 8;
+            const durationBonus = duration / 100; // 张嘴时间加成
+            const randomBonus = Math.random() * 10; // 随机大小：0-10
+            const bubbleSize = Math.min(35, baseSize + durationBonus + randomBonus);
+            
+            // 创建泡泡
             const bubble = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-            const size = Math.random() * 15 + 10;
-            const x = Math.random() * 60 + 420;
-            const y = 440;
-            bubble.setAttribute('cx', x);
-            bubble.setAttribute('cy', y);
-            bubble.setAttribute('r', size);
+            bubble.setAttribute('cx', svgX);
+            bubble.setAttribute('cy', svgY);
+            bubble.setAttribute('r', bubbleSize);
             bubble.setAttribute('fill', 'url(#bubbleGrad)');
             bubble.setAttribute('stroke', '#e0f7fa');
             bubble.setAttribute('stroke-width', 2);
             svgElements.bubbleContainer.appendChild(bubble);
+
+            // 🔥 计算自然的水平漂移
+            // 70% 继承上一个泡泡的漂移趋势 + 30% 随机扰动
+            const randomPerturbation = (Math.random() - 0.5) * 0.6; // -0.3 到 0.3
+            driftTrend = lastBubbleDrift * 0.7 + randomPerturbation * 0.3;
+            // 限制漂移范围在 -1 到 1 之间
+            driftTrend = Math.max(-1, Math.min(1, driftTrend));
+            lastBubbleDrift = driftTrend; // 保存供下一个泡泡参考
             
-            let bubbleY = y;
+            const driftSpeed = driftTrend * 1.5; // 漂移速度
+
+            // 泡泡上升并略微向外移动
+            let bubbleX = svgX;
+            let bubbleY = svgY;
+            
             function moveBubble() {
-                bubbleY -= 1;
+                bubbleY -= 1.5; // 上升速度
+                bubbleX += driftSpeed; // 水平漂移（继承趋势）
+                bubble.setAttribute('cx', bubbleX);
                 bubble.setAttribute('cy', bubbleY);
-                const opacity = 1 - (bubbleY - 200) / 240;
-                bubble.setAttribute('opacity', opacity);
-                if (bubbleY > 200) {
+                
+                // 透明度渐变：从 1 到 0（在 y=150 时消失）
+                const opacity = 1 - (bubbleY - 150) / (svgY - 150);
+                bubble.setAttribute('opacity', Math.max(0, opacity));
+                
+                if (bubbleY > 150 && opacity > 0) {
                     requestAnimationFrame(moveBubble);
                 } else {
-                    svgElements.bubbleContainer.removeChild(bubble);
+                    if (svgElements.bubbleContainer.contains(bubble)) {
+                        svgElements.bubbleContainer.removeChild(bubble);
+                    }
                 }
             }
             requestAnimationFrame(moveBubble);
@@ -601,7 +648,7 @@
                 svgElements.eyeRightHighlight.setAttribute('cy', 306 + eyeOffsetRightY + rightPupilY * 0.6);
             }
 
-            // ============ 7. 嘴巴（线条/填充切换） ============
+            // ============ 7. 嘴巴（线条/填充切换） + 吐泡泡 ============
             const mouthLeft = landmarks[61];
             const mouthRight = landmarks[291];
 
@@ -612,6 +659,38 @@
                 const mouthOffsetY = (mouthCenterY - 0.53) * 150;
                 const mouthOpenness = Math.abs(mouthBottom.y - mouthTop.y);
                 const fillThreshold = 0.025;
+                
+                // 🔥 张嘴检测：阈值 0.03
+                const isMouthOpen = mouthOpenness > fillThreshold;
+                const now = performance.now();
+                
+                // 🔥 张嘴计时逻辑
+                if (isMouthOpen) {
+                    // 如果刚开始张嘴，记录开始时间
+                    if (!isMouthOpenPrev) {
+                        mouthOpenStartTime = now;
+                        mouthOpenDuration = 0;
+                    } else {
+                        // 持续张嘴，累加时间
+                        mouthOpenDuration = now - mouthOpenStartTime;
+                    }
+                } else {
+                    // 闭嘴时重置计时
+                    if (isMouthOpenPrev) {
+                        // 🔥 保存张嘴持续时间，用于吐泡泡
+                        lastMouthOpenDuration = mouthOpenDuration;
+                        mouthOpenStartTime = 0;
+                        mouthOpenDuration = 0;
+                    }
+                }
+                
+                // 🔥 吐泡泡逻辑：从张嘴到闭嘴的瞬间触发（基于刚才张嘴的持续时间）
+                if (!isMouthOpen && isMouthOpenPrev && lastMouthOpenDuration > 100 && (now - lastBubbleTime > BUBBLE_INTERVAL)) {
+                    createBubbleFromMouth(mouthLeft, mouthRight, mouthTop, mouthBottom, lastMouthOpenDuration);
+                    lastBubbleTime = now;
+                    console.log('🫧 吐泡泡！刚才张嘴时间：' + lastMouthOpenDuration.toFixed(0) + 'ms');
+                }
+                isMouthOpenPrev = isMouthOpen;
 
                 let mouthPath;
                 if (mouthOpenness > fillThreshold) {
@@ -725,7 +804,7 @@
         // ============ 初始化 ============
         connectWebSocket();
         animateTail();
-        bubbleTimer = setInterval(createBubble, 3000);
+        // 🔥 吐泡泡改为张嘴时触发，不再使用定时器
     </script>
 </body>
 </html>
