@@ -37,6 +37,15 @@
             transform: scaleX(-1);
             border-radius: 10px;
         }
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1);
+            pointer-events: none;
+        }
         #fps {
             position: absolute;
             top: 10px;
@@ -93,7 +102,8 @@
     
     <div class="container">
         <div class="video-wrapper">
-            <video id="video" width="320" height="240" playsinline autoplay muted></video>
+            <video id="video" width="640" height="480" playsinline autoplay muted></video>
+            <canvas id="canvas" width="640" height="480"></canvas>
             <div id="fps">FPS: 0</div>
         </div>
         
@@ -104,84 +114,105 @@
 
         <div id="status" style="color:white;margin:10px 0;text-align:center;">点击"启动"开始</div>
         <div id="connectionStatus" class="disconnected">未连接 WebSocket</div>
+        
+        <div id="dataPreview"></div>
     </div>
 
-    <!-- 使用 MediaPipe Tasks Vision API (新版本，更稳定) -->
-    <script type="module">
-        import { FilesetResolver, FaceLandmarker } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/+esm';
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+    
+    <script>
         // 配置
         const WS_URL = `ws://${window.location.hostname}:16666/ws`;
-        const VIDEO_WIDTH = 320;
+        const VIDEO_WIDTH = 320;   // 🔥 降低分辨率提高性能
         const VIDEO_HEIGHT = 240;
-        const DEBUG_MODE = false;
+        const DEBUG_MODE = false; // 🔥 设置为 true 启用网格绘制
 
+        // 设置全局调试模式
         window.DEBUG_MODE = DEBUG_MODE;
 
         // 状态
         let ws = null;
         let isRunning = false;
+        let lastFrameTime = 0;
         let frameCount = 0;
         let fps = 0;
-        let lastFrameTime = performance.now();
-        let faceLandmarker = null;
-        
-        // 🔥 发送限流：30 FPS
-        let lastSendTime = 0;
-        const SEND_INTERVAL = 1000 / 30; // 33ms
 
         // DOM 元素
         const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
         const startBtn = document.getElementById('startBtn');
         const stopBtn = document.getElementById('stopBtn');
         const connectionStatus = document.getElementById('connectionStatus');
-        const statusEl = document.getElementById('status');
 
         // 连接 WebSocket
         function connectWebSocket() {
             connectionStatus.className = 'connecting';
             connectionStatus.textContent = '连接中...';
+
             ws = new WebSocket(WS_URL);
+
             ws.onopen = () => {
                 connectionStatus.className = 'connected';
                 connectionStatus.textContent = '✅ 已连接 WebSocket';
                 console.log('WebSocket 连接成功');
-                // 注册为面捕端
-                ws.send(JSON.stringify({ type: 'register_capture' }));
             };
+
             ws.onclose = () => {
                 connectionStatus.className = 'disconnected';
                 connectionStatus.textContent = '❌ 未连接 WebSocket';
+                console.log('WebSocket 连接关闭');
+                // 3 秒后重连
                 setTimeout(connectWebSocket, 3000);
             };
-            ws.onerror = (error) => console.error('WebSocket 错误:', error);
+
+            ws.onerror = (error) => {
+                console.error('WebSocket 错误:', error);
+            };
+
+            ws.onmessage = (event) => {
+                console.log('收到消息:', event.data);
+            };
         }
 
-        // 发送面捕数据
-        function sendFaceMeshData(landmarks) {
+        // 🔥 发送原始面捕数据（最简单，最高性能）
+        // 带宽不是问题（局域网），把计算压力转移到渲染端
+        let lastSendTime = 0;
+        const SEND_INTERVAL = 1000 / 30; // 30 FPS
+
+        function sendFaceMeshData(results) {
             if (!ws || ws.readyState !== WebSocket.OPEN) return;
-            
-            // 🔥 限流：30 FPS
+
+            // 限流：30 FPS
             const now = performance.now();
             if (now - lastSendTime < SEND_INTERVAL) return;
             lastSendTime = now;
-            
+
+            const landmarks = results.multiFaceLandmarks[0];
+
+            // 直接发送原始数据，不做任何计算
             const data = {
                 type: 'facemesh',
                 timestamp: Date.now(),
-                landmarks: landmarks.map(lm => ({ x: lm.x, y: lm.y, z: lm.z }))
+                // 完整的 468 个 landmarks 点
+                landmarks: landmarks.map(lm => ({
+                    x: lm.x,
+                    y: lm.y,
+                    z: lm.z
+                }))
             };
-            
-            try {
-                ws.send(JSON.stringify(data));
-            } catch (error) {
-                console.error('WebSocket 发送失败:', error);
-            }
-        }
 
-        // FPS 计算
+            ws.send(JSON.stringify(data));
+        }
+        
+        // 计算 FPS
         function updateFPS() {
             const now = performance.now();
             frameCount++;
+            
             if (now - lastFrameTime >= 1000) {
                 fps = frameCount;
                 frameCount = 0;
@@ -189,87 +220,107 @@
                 document.getElementById('fps').textContent = `FPS: ${fps}`;
             }
         }
+        
+        // 初始化 FaceMesh
+        const faceMesh = new FaceMesh({
+            locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+            }
+        });
+        
+        faceMesh.setOptions({
+            maxNumFaces: 1,
+            refineLandmarks: true,  // 🔥 需要虹膜关键点（渲染端使用）
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+        
+        faceMesh.onResults((results) => {
+            if (!isRunning) return;
 
-        // 初始化 FaceLandmarker
-        async function initFaceLandmarker() {
-            statusEl.textContent = '🔄 正在加载模型...';
-            const vision = await FilesetResolver.forVisionTasks(
-                'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm'
-            );
-            faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
-                baseOptions: {
-                    modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
-                    delegate: 'GPU'
-                },
-                outputFaceBlendshapes: false,
-                outputFacialTransformationMatrixes: false,
-                runningMode: 'VIDEO',
-                maxNumFaces: 1,
-                minDetectionConfidence: 0.5,
-                minTrackingConfidence: 0.5
-            });
-            statusEl.textContent = '✅ 模型加载完成';
-        }
+            // 清空画布
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // 处理帧
-        function processFrame() {
-            if (!isRunning || !faceLandmarker) return;
-            
-            const startTime = performance.now();
-            const results = faceLandmarker.detectForVideo(video, startTime);
-            const detectTime = performance.now() - startTime;
-            
-            updateFPS();
+            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                const landmarks = results.multiFaceLandmarks[0];
 
-            if (results.faceLandmarks && results.faceLandmarks.length > 0) {
-                const landmarks = results.faceLandmarks[0];
-                statusEl.textContent = `✅ 追踪中 - ${landmarks.length} 个点 | 检测耗时：${detectTime.toFixed(1)}ms`;
-                sendFaceMeshData(landmarks);
-            } else {
-                statusEl.textContent = `🔍 未检测到面部 | 检测耗时：${detectTime.toFixed(1)}ms`;
+                // 🔥 性能优化：只在开发模式下绘制网格（生产环境注释掉）
+                // 绘制 FaceMesh 网格非常耗时，会影响 FPS
+                if (window.DEBUG_MODE) {
+                    drawConnectors(ctx, landmarks, FACEMESH_TESSELATION, {color: '#C0C0C070', lineWidth: 1});
+                    drawConnectors(ctx, landmarks, FACEMESH_RIGHT_EYE, {color: '#FF3030', lineWidth: 2});
+                    drawConnectors(ctx, landmarks, FACEMESH_RIGHT_EYEBROW, {color: '#FF3030', lineWidth: 2});
+                    drawConnectors(ctx, landmarks, FACEMESH_LEFT_EYE, {color: '#30FF30', lineWidth: 2});
+                    drawConnectors(ctx, landmarks, FACEMESH_LEFT_EYEBROW, {color: '#30FF30', lineWidth: 2});
+                    drawConnectors(ctx, landmarks, FACEMESH_LIPS, {color: '#E0E0E0', lineWidth: 2});
+                }
+
+                // 发送数据（每帧都发送）
+                sendFaceMeshData(results);
             }
 
-            requestAnimationFrame(processFrame);
-        }
-
+            updateFPS();
+        });
+        
         // 启动面捕
         async function startCapture() {
             try {
-                if (!faceLandmarker) await initFaceLandmarker();
-                
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: { width: VIDEO_WIDTH, height: VIDEO_HEIGHT }
                 });
                 video.srcObject = stream;
-                await new Promise(resolve => {
-                    video.onloadedmetadata = () => { video.play(); resolve(); };
+
+                await new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        video.play();
+                        resolve();
+                    };
                 });
 
                 isRunning = true;
                 startBtn.disabled = true;
                 stopBtn.disabled = false;
-                statusEl.textContent = '✅ 运行中 - 请面对摄像头';
+                status.textContent = '✅ 运行中 - 请面对摄像头';
+
+                // 开始处理视频帧 - 🔥 优化：使用 requestAnimationFrame 但不等待
+                function processFrame() {
+                    if (!isRunning) return;
+
+                    // 异步发送，不阻塞下一帧
+                    faceMesh.send({ image: video }).catch(err => {
+                        console.error('FaceMesh 处理错误:', err);
+                    });
+
+                    requestAnimationFrame(processFrame);
+                }
+
                 processFrame();
+
             } catch (error) {
-                statusEl.textContent = '❌ 错误：' + error.message;
-                console.error(error);
+                console.error('启动面捕失败:', error);
+                alert('无法访问摄像头：' + error.message);
             }
         }
-
+        
         // 停止面捕
         function stopCapture() {
             isRunning = false;
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            
             if (video.srcObject) {
                 video.srcObject.getTracks().forEach(track => track.stop());
                 video.srcObject = null;
             }
-            startBtn.disabled = false;
-            stopBtn.disabled = true;
-            statusEl.textContent = '已停止';
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
         }
-
+        
+        // 事件监听
         startBtn.addEventListener('click', startCapture);
         stopBtn.addEventListener('click', stopCapture);
+        
+        // 初始化连接
         connectWebSocket();
     </script>
 </body>

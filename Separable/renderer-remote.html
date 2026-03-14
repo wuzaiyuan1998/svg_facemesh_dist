@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FaceMesh 渲染端 - 电脑 A</title>
+    <title>六角恐龙 - FaceMesh 渲染端</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -16,7 +16,7 @@
             padding: 20px;
         }
         h1 { color: white; margin-bottom: 10px; }
-        .status { color: #e0e7ff; margin-bottom: 20px; font-size: 14px; }
+        .subtitle { color: #e0e7ff; margin-bottom: 20px; font-size: 14px; }
         .container {
             background: white;
             border-radius: 15px;
@@ -44,6 +44,19 @@
             font-size: 12px;
             color: #6b7280;
             text-align: center;
+        }
+        #renderFps {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,128,255,0.9);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 5px;
+            font-weight: bold;
+            font-family: monospace;
+            font-size: 14px;
+            z-index: 100;
         }
         .config-panel {
             margin-top: 15px;
@@ -77,12 +90,32 @@
         .config-panel button:hover {
             background: #059669;
         }
+
+        /* 直播模式 */
+        body.live-mode-active {
+            background: transparent !important;
+        }
+        body.live-mode-active > h1,
+        body.live-mode-active > .subtitle,
+        body.live-mode-active > #connectionStatus,
+        body.live-mode-active > .container > .config-panel,
+        body.live-mode-active > #dataStats {
+            display: none;
+        }
+        body.live-mode-active > .container {
+            background: transparent;
+            box-shadow: none;
+            padding: 0;
+        }
+        body.live-mode-active #character {
+            background: transparent;
+        }
     </style>
 </head>
 <body>
-    <h1>🦎 FaceMesh 渲染端</h1>
-    <div class="status">电脑 A - 接收数据驱动动画</div>
-    
+    <h1>🦎 六角恐龙 - FaceMesh 渲染端</h1>
+    <div class="subtitle">分层动捕 - 头部/眼睛/尾巴独立控制</div>
+
     <div class="container">
         <svg id="character" viewBox="0 0 800 800" xmlns="http://www.w3.org/2000/svg">
             <defs>
@@ -90,21 +123,42 @@
                     <stop offset="0%" stop-color="#4CC9F0"/>
                     <stop offset="100%" stop-color="#4CAF50"/>
                 </linearGradient>
+                <linearGradient id="bubbleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#ffffff" stop-opacity="0.9"/>
+                    <stop offset="100%" stop-color="#e0f7fa" stop-opacity="0.7"/>
+                </linearGradient>
             </defs>
 
-            <!-- 身体组 -->
+            <!-- ============ 图层 1: 身体组（整体动捕：平移 + 缩放） ============ -->
             <g id="layer-body-group">
-                <!-- 尾巴 -->
+                <!-- 尾巴（独立摆动） -->
                 <g id="layer-tail">
                     <path id="tail" d="M140 340 Q90 450 140 560 Q200 660 310 610 L330 510 Z"
                           fill="#FFF9E6" stroke="#000" stroke-width="18"/>
+                    <path d="M155 375 L225 415" stroke="#FF9F1C" stroke-width="8" stroke-linecap="round"/>
+                    <path d="M165 415 L235 455" stroke="#FF9F1C" stroke-width="8" stroke-linecap="round"/>
+                    <path d="M175 455 L245 495" stroke="#FF9F1C" stroke-width="8" stroke-linecap="round"/>
+                    <path d="M185 495 L255 535" stroke="#FF9F1C" stroke-width="8" stroke-linecap="round"/>
+                    <path d="M195 535 L265 575" stroke="#FF9F1C" stroke-width="8" stroke-linecap="round"/>
+                    <path d="M215 475 L305 495" stroke="#FF5A5F" stroke-width="14" stroke-linecap="round"/>
                 </g>
 
                 <!-- 头部组 -->
                 <g id="layer-head">
+                    <!-- 头部主体形状 -->
                     <path id="head-shape" d="M320 190 Q400 110 570 190 Q650 270 670 400 Q650 530 590 610 Q530 660 420 670 Q320 660 260 610 Q220 560 220 510 L330 510 Q330 410 320 190 Z"
                           fill="#FFD166" stroke="#000" stroke-width="18"/>
-                    
+
+                    <!-- 头部斑点 -->
+                    <g id="head-spots">
+                        <circle cx="420" cy="215" r="10" fill="#FFB347"/>
+                        <circle cx="450" cy="205" r="12" fill="#FFB347"/>
+                        <circle cx="480" cy="215" r="10" fill="#FFB347"/>
+                        <circle cx="510" cy="225" r="12" fill="#FFB347"/>
+                        <circle cx="440" cy="235" r="10" fill="#FFB347"/>
+                        <circle cx="490" cy="245" r="10" fill="#FFB347"/>
+                    </g>
+
                     <!-- 外鳃 -->
                     <g id="layer-gills">
                         <g id="gill-left" fill="#FF5A5F" stroke="#000" stroke-width="14">
@@ -119,33 +173,67 @@
                         </g>
                     </g>
 
-                    <!-- 眼睛 -->
+                    <!-- 眼睛眼眶 -->
                     <g id="layer-eyes">
-                        <g id="eye-left">
-                            <ellipse cx="420" cy="340" rx="55" ry="65" fill="url(#eyeGrad)" stroke="#000" stroke-width="8"/>
-                            <ellipse cx="420" cy="340" rx="25" ry="30" fill="#000"/>
-                            <circle cx="430" cy="330" r="10" fill="white"/>
+                        <g id="eye-left-socket">
+                            <circle id="eye-left-outer" cx="380" cy="320" r="62" fill="url(#eyeGrad)" stroke="#000" stroke-width="8"/>
                         </g>
-                        <g id="eye-right">
-                            <ellipse cx="500" cy="340" rx="55" ry="65" fill="url(#eyeGrad)" stroke="#000" stroke-width="8"/>
-                            <ellipse cx="500" cy="340" rx="25" ry="30" fill="#000"/>
-                            <circle cx="510" cy="330" r="10" fill="white"/>
+                        <g id="eye-right-socket">
+                            <circle id="eye-right-outer" cx="520" cy="320" r="62" fill="url(#eyeGrad)" stroke="#000" stroke-width="8"/>
                         </g>
+                        <ellipse id="eye-left-inner" cx="380" cy="320" rx="32" ry="32" fill="#000"/>
+                        <circle id="eye-left-highlight" cx="396" cy="306" r="14" fill="#FFF"/>
+                        <ellipse id="eye-right-inner" cx="520" cy="320" rx="32" ry="32" fill="#000"/>
+                        <circle id="eye-right-highlight" cx="536" cy="306" r="14" fill="#FFF"/>
                     </g>
 
-                    <!-- 嘴巴 -->
-                    <path id="mouth" d="M400 450 Q440 480 480 450" fill="none" stroke="#FF6B6B" stroke-width="8" stroke-linecap="round"/>
+                </g>
+
+                <!-- 腮红层（独立于头部，在身体组内） -->
+                <g id="layer-blush">
+                    <circle id="blush-left" cx="340" cy="380" r="28" fill="#FFB3C1" opacity="0.8"/>
+                    <circle id="blush-right" cx="560" cy="380" r="28" fill="#FFB3C1" opacity="0.8"/>
+                </g>
+
+                <!-- 腹部 -->
+                <g id="layer-belly">
+                    <path d="M400 470 Q500 490 600 470 Q580 610 520 650 Q420 660 320 650 Q280 610 400 470 Z"
+                          fill="#FFB3C1"/>
+                </g>
+
+                <!-- 嘴巴（在腹部之上） -->
+                <g id="layer-mouth">
+                    <path id="mouth" d="M420 420 Q450 445 480 420" fill="none" stroke="#E76F51" stroke-width="10" stroke-linecap="round"/>
+                </g>
+
+                <!-- 四肢 -->
+                <g id="layer-limbs">
+                    <path d="M360 510 Q340 600 380 625 Q400 670 420 625 Q440 600 420 580 Z"
+                          fill="#FF9F1C" stroke="#000" stroke-width="14"/>
+                    <path d="M540 510 Q560 600 520 625 Q500 670 480 625 Q460 600 480 580 Z"
+                          fill="#FF9F1C" stroke="#000" stroke-width="14"/>
+                    <path d="M280 570 Q260 650 300 675 Q320 720 340 675 Q360 650 340 620 Z"
+                          fill="#FF9F1C" stroke="#000" stroke-width="14"/>
+                    <path d="M620 570 Q640 650 600 675 Q580 720 560 675 Q540 650 560 620 Z"
+                          fill="#FF9F1C" stroke="#000" stroke-width="14"/>
                 </g>
             </g>
+
+            <!-- ============ 图层 2: 泡泡（最上层，不跟随动捕） ============ -->
+            <g id="bubble-container"></g>
         </svg>
-        
+
+        <!-- 渲染 FPS 显示 -->
+        <div id="renderFps">渲染 FPS: 0</div>
+
         <div id="connectionStatus" class="disconnected">未连接 WebSocket</div>
         <div id="dataStats">等待数据...</div>
-        
+
         <div class="config-panel">
             <label for="wsUrl">🔧 电脑 B（面捕端）WebSocket 地址：</label>
-            <input type="text" id="wsUrl" value="wss://192.168.1.100:16666/ws" placeholder="例如：wss://192.168.1.100:16666/ws">
+            <input type="text" id="wsUrl" value="ws://localhost:16666/ws" placeholder="例如：ws://192.168.1.100:16666/ws">
             <button onclick="saveAndReconnect()">💾 保存并重新连接</button>
+            <button onclick="toggleLiveMode()" style="background:#f59e0b;margin-left:10px;">📺 直播模式</button>
         </div>
     </div>
 
@@ -153,77 +241,469 @@
         // 配置
         let WS_URL = localStorage.getItem('facemesh_ws_url') || 'ws://localhost:16666/ws';
         document.getElementById('wsUrl').value = WS_URL;
-        
+
         // 状态
         let ws = null;
         let lastDataTime = 0;
         let dataCount = 0;
+        let tailTime = 0;
+        let bubbleTimer = null;
         
+        // 🔥 渲染 FPS 计算
+        let renderFrameCount = 0;
+        let renderFps = 0;
+        let lastRenderFpsTime = performance.now();
+
+        // ============ 平滑滤波（消除抖动） ============
+        const smoothingFactor = 0.3;
+        const eyeSmoothingFactor = 0.5;
+
+        const prevData = {
+            faceX: 0, faceY: 0, noseWidth: 0,
+            headX: 0, headY: 0,
+            blushLeftX: 0, blushLeftY: 0, blushRightX: 0, blushRightY: 0,
+            eyeLeftX: 0, eyeLeftY: 0, eyeRightX: 0, eyeRightY: 0,
+            irisLeftX: 0, irisLeftY: 0, irisRightX: 0, irisRightY: 0,
+            eyeBlinkLeft: 0, eyeBlinkRight: 0,
+            eyeLookInLeft: 0, eyeLookOutLeft: 0, eyeLookUpLeft: 0, eyeLookDownLeft: 0,
+            eyeLookInRight: 0, eyeLookOutRight: 0, eyeLookUpRight: 0, eyeLookDownRight: 0,
+            jawOpen: 0, mouthWidth: 0
+        };
+
+        // 死区阈值 - 🔥 降低阈值，提高灵敏度
+        const deadZone = 0.003;
+        const eyeDeadZone = 0.015;
+        const irisDeadZone = 0.012;
+
         // DOM 元素
         const connectionStatus = document.getElementById('connectionStatus');
         const dataStats = document.getElementById('dataStats');
         const wsUrlInput = document.getElementById('wsUrl');
+
+        // SVG 元素 - 分层控制
+        const svgElements = {
+            bodyGroup: document.getElementById('layer-body-group'),
+            layerHead: document.getElementById('layer-head'),
+            headShape: document.getElementById('head-shape'),
+            headSpots: document.getElementById('head-spots'),
+            layerGills: document.getElementById('layer-gills'),
+            gillLeft: document.getElementById('gill-left'),
+            gillRight: document.getElementById('gill-right'),
+            layerEyes: document.getElementById('layer-eyes'),
+            eyeLeftSocket: document.getElementById('eye-left-socket'),
+            eyeRightSocket: document.getElementById('eye-right-socket'),
+            eyeLeftInner: document.getElementById('eye-left-inner'),
+            eyeRightInner: document.getElementById('eye-right-inner'),
+            eyeLeftHighlight: document.getElementById('eye-left-highlight'),
+            eyeRightHighlight: document.getElementById('eye-right-highlight'),
+            layerBlush: document.getElementById('layer-blush'),
+            blushLeft: document.getElementById('blush-left'),
+            blushRight: document.getElementById('blush-right'),
+            mouth: document.getElementById('mouth'),
+            layerTail: document.getElementById('layer-tail'),
+            tail: document.getElementById('tail'),
+            bubbleContainer: document.getElementById('bubble-container')
+        };
+
+        // ============ 工具函数 ============
+        function smoothValue(current, prev, factor) {
+            return prev + (current - prev) * factor;
+        }
+
+        function applyDeadZone(value, threshold) {
+            if (Math.abs(value) < threshold) return 0;
+            return value;
+        }
+
+        function mapIrisMovement(value, maxRange) {
+            const normalized = value / maxRange;
+            return Math.sin(normalized * Math.PI / 2) * maxRange;
+        }
+
+        function microTremor(time, amplitude = 0.8) {
+            return Math.sin(time * 2.3) * Math.sin(time * 1.7) * amplitude;
+        }
         
-        // SVG 元素
-        const layerBody = document.getElementById('layer-body-group');
-        const layerHead = document.getElementById('layer-head');
-        const layerTail = document.getElementById('layer-tail');
-        const eyeLeft = document.getElementById('eye-left');
-        const eyeRight = document.getElementById('eye-right');
-        const mouth = document.getElementById('mouth');
-        
-        // 连接 WebSocket
+        // 🔥 渲染 FPS 更新
+        function updateRenderFps() {
+            const now = performance.now();
+            renderFrameCount++;
+            if (now - lastRenderFpsTime >= 1000) {
+                renderFps = renderFrameCount;
+                renderFrameCount = 0;
+                lastRenderFpsTime = now;
+                document.getElementById('renderFps').textContent = `渲染 FPS: ${renderFps}`;
+            }
+        }
+
+        // ============ 尾巴待机动画 ============
+        function animateTail() {
+            tailTime += 0.05;
+            const tailAngle = Math.sin(tailTime) * 5;
+            if (svgElements.tail) {
+                svgElements.tail.setAttribute('transform', `rotate(${tailAngle} 200 450)`);
+            }
+            requestAnimationFrame(animateTail);
+        }
+
+        // ============ 吐泡泡 ============
+        function createBubble() {
+            if (!svgElements.bubbleContainer) return;
+            const bubble = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            const size = Math.random() * 15 + 10;
+            const x = Math.random() * 60 + 420;
+            const y = 440;
+            bubble.setAttribute('cx', x);
+            bubble.setAttribute('cy', y);
+            bubble.setAttribute('r', size);
+            bubble.setAttribute('fill', 'url(#bubbleGrad)');
+            bubble.setAttribute('stroke', '#e0f7fa');
+            bubble.setAttribute('stroke-width', 2);
+            svgElements.bubbleContainer.appendChild(bubble);
+            
+            let bubbleY = y;
+            function moveBubble() {
+                bubbleY -= 1;
+                bubble.setAttribute('cy', bubbleY);
+                const opacity = 1 - (bubbleY - 200) / 240;
+                bubble.setAttribute('opacity', opacity);
+                if (bubbleY > 200) {
+                    requestAnimationFrame(moveBubble);
+                } else {
+                    svgElements.bubbleContainer.removeChild(bubble);
+                }
+            }
+            requestAnimationFrame(moveBubble);
+        }
+
+        // ============ 应用表情到 SVG（完整逻辑 - 来自 liujiao-facemesh-tasks-dev.html） ============
+        function applyExpression(landmarks) {
+            if (!landmarks || landmarks.length < 468) return;
+            
+            // 🔥 更新渲染 FPS
+            updateRenderFps();
+
+            // ============ 1. 身体组整体平移 + 缩放 ============
+            const noseTip = landmarks[1];
+            const noseBase = landmarks[4];
+            const forehead = landmarks[10];
+            const chin = landmarks[152];
+
+            const rawFaceX = (forehead.x + chin.x) / 2;
+            const rawFaceY = (forehead.y + chin.y) / 2;
+
+            const faceXDelta = rawFaceX - prevData.faceX;
+            const faceYDelta = rawFaceY - prevData.faceY;
+
+            const faceX = Math.abs(faceXDelta) < deadZone ? prevData.faceX : rawFaceX;
+            const faceY = Math.abs(faceYDelta) < deadZone ? prevData.faceY : rawFaceY;
+
+            prevData.faceX = faceX;
+            prevData.faceY = faceY;
+
+            const bodyOffsetX = (faceX - 0.5) * 200;
+            const bodyOffsetY = (faceY - 0.45) * 150;
+
+            const rawNoseWidth = Math.abs(landmarks[273]?.x - landmarks[6]?.x) || 0;
+            const noseWidth = smoothValue(rawNoseWidth, prevData.noseWidth, smoothingFactor);
+            prevData.noseWidth = noseWidth;
+            const bodyScale = 1 + (noseWidth - 0.08) * 3;
+
+            if (svgElements.bodyGroup) {
+                svgElements.bodyGroup.setAttribute('transform',
+                    `translate(${bodyOffsetX}, ${bodyOffsetY}) scale(${bodyScale})`);
+            }
+
+            // ============ 2. 头部相对平移 ============
+            const rawHeadX = faceX;
+            const rawHeadY = faceY;
+
+            const headXDelta = rawHeadX - prevData.headX;
+            const headYDelta = rawHeadY - prevData.headY;
+
+            const headX = Math.abs(headXDelta) < deadZone ? prevData.headX : rawHeadX;
+            const headY = Math.abs(headYDelta) < deadZone ? prevData.headY : rawHeadY;
+
+            prevData.headX = headX;
+            prevData.headY = headY;
+
+            const headOffsetX = (headX - 0.5) * 50;
+            const headOffsetY = (headY - 0.45) * 30;
+
+            if (svgElements.layerHead) {
+                svgElements.layerHead.setAttribute('transform',
+                    `translate(${headOffsetX}, ${headOffsetY})`);
+            }
+
+            // ============ 3. 腮红独立动捕 ============
+            const leftCheek = landmarks[116];
+            const rightCheek = landmarks[345];
+
+            if (leftCheek && rightCheek) {
+                const rawBlushLeftX = (leftCheek.x - 0.35) * 80;
+                const rawBlushLeftY = (leftCheek.y - 0.45) * 60;
+                const rawBlushRightX = (rightCheek.x - 0.55) * 80;
+                const rawBlushRightY = (rightCheek.y - 0.45) * 60;
+
+                const blushLeftXDelta = rawBlushLeftX - prevData.blushLeftX;
+                const blushLeftYDelta = rawBlushLeftY - prevData.blushLeftY;
+                const blushRightXDelta = rawBlushRightX - prevData.blushRightX;
+                const blushRightYDelta = rawBlushRightY - prevData.blushRightY;
+
+                const blushLeftX = Math.abs(blushLeftXDelta) < deadZone ? prevData.blushLeftX : rawBlushLeftX;
+                const blushLeftY = Math.abs(blushLeftYDelta) < deadZone ? prevData.blushLeftY : rawBlushLeftY;
+                const blushRightX = Math.abs(blushRightXDelta) < deadZone ? prevData.blushRightX : rawBlushRightX;
+                const blushRightY = Math.abs(blushRightYDelta) < deadZone ? prevData.blushRightY : rawBlushRightY;
+
+                prevData.blushLeftX = blushLeftX;
+                prevData.blushLeftY = blushLeftY;
+                prevData.blushRightX = blushRightX;
+                prevData.blushRightY = blushRightY;
+
+                if (svgElements.blushLeft && svgElements.blushRight) {
+                    svgElements.blushLeft.setAttribute('transform', `translate(${blushLeftX}, ${blushLeftY})`);
+                    svgElements.blushRight.setAttribute('transform', `translate(${blushRightX}, ${blushRightY})`);
+                }
+            }
+
+            // ============ 4. 外鳃摆动 ============
+            const gillAngle = Math.sin(tailTime * 2) * 8;
+            if (svgElements.gillLeft && svgElements.gillRight) {
+                svgElements.gillLeft.setAttribute('transform', `rotate(${gillAngle} 300 250)`);
+                svgElements.gillRight.setAttribute('transform', `rotate(${-gillAngle} 570 250)`);
+            }
+
+            // ============ 5. 眼睛眼眶平移 ============
+            const leftEyeLeft = landmarks[33];
+            const leftEyeRight = landmarks[133];
+            const rightEyeLeft = landmarks[362];
+            const rightEyeRight = landmarks[263];
+
+            let eyeOffsetLeftX = 0, eyeOffsetLeftY = 0;
+            let eyeOffsetRightX = 0, eyeOffsetRightY = 0;
+
+            if (leftEyeLeft && leftEyeRight && rightEyeLeft && rightEyeRight) {
+                const rawLeftEyeX = (leftEyeLeft.x + leftEyeRight.x) / 2;
+                const rawLeftEyeY = (leftEyeLeft.y + leftEyeRight.y) / 2;
+                const rawRightEyeX = (rightEyeLeft.x + rightEyeRight.x) / 2;
+                const rawRightEyeY = (rightEyeLeft.y + rightEyeRight.y) / 2;
+
+                const leftEyeXDelta = rawLeftEyeX - prevData.eyeLeftX;
+                const leftEyeYDelta = rawLeftEyeY - prevData.eyeLeftY;
+                const rightEyeXDelta = rawRightEyeX - prevData.eyeRightX;
+                const rightEyeYDelta = rawRightEyeY - prevData.eyeRightY;
+
+                const leftEyeX = Math.abs(leftEyeXDelta) < deadZone ? prevData.eyeLeftX : rawLeftEyeX;
+                const leftEyeY = Math.abs(leftEyeYDelta) < deadZone ? prevData.eyeLeftY : rawLeftEyeY;
+                const rightEyeX = Math.abs(rightEyeXDelta) < deadZone ? prevData.eyeRightX : rawRightEyeX;
+                const rightEyeY = Math.abs(rightEyeYDelta) < deadZone ? prevData.eyeRightY : rawRightEyeY;
+
+                prevData.eyeLeftX = leftEyeX;
+                prevData.eyeLeftY = leftEyeY;
+                prevData.eyeRightX = rightEyeX;
+                prevData.eyeRightY = rightEyeY;
+
+                eyeOffsetLeftX = (leftEyeX - 0.35) * 100;
+                eyeOffsetLeftY = (leftEyeY - 0.35) * 100;
+                eyeOffsetRightX = (rightEyeX - 0.55) * 100;
+                eyeOffsetRightY = (rightEyeY - 0.35) * 100;
+
+                if (svgElements.eyeLeftSocket && svgElements.eyeRightSocket) {
+                    svgElements.eyeLeftSocket.setAttribute('transform', `translate(${eyeOffsetLeftX}, ${eyeOffsetLeftY})`);
+                    svgElements.eyeRightSocket.setAttribute('transform', `translate(${eyeOffsetRightX}, ${eyeOffsetRightY})`);
+                }
+            }
+
+            // ============ 6. 瞳孔追踪 + 眨眼 ============
+            const leftEyeTop = landmarks[159];
+            const leftEyeBottom = landmarks[145];
+            const rightEyeTop = landmarks[386];
+            const rightEyeBottom = landmarks[374];
+
+            function getEyeOpenness(top, bottom, left, right) {
+                if (!top || !bottom || !left || !right) return 0.3;
+                const vertical = Math.abs(top.y - bottom.y);
+                const horizontal = Math.abs(right.x - left.x);
+                return vertical / horizontal;
+            }
+
+            const leftEyeOpenness = getEyeOpenness(leftEyeTop, leftEyeBottom, leftEyeLeft, leftEyeRight);
+            const rightEyeOpenness = getEyeOpenness(rightEyeTop, rightEyeBottom, rightEyeLeft, rightEyeRight);
+            const avgEyeOpenness = (leftEyeOpenness + rightEyeOpenness) / 2;
+
+            // 眨眼检测：阈值 0.32
+            const isBlinking = avgEyeOpenness < 0.32;
+
+            // 虹膜追踪
+            const rawIrisLeftX = landmarks[468]?.x || leftEyeLeft?.x || 0;
+            const rawIrisLeftY = landmarks[468]?.y || leftEyeTop?.y || 0;
+            const rawIrisRightX = landmarks[473]?.x || rightEyeRight?.x || 0;
+            const rawIrisRightY = landmarks[473]?.y || rightEyeTop?.y || 0;
+
+            const irisLeftXDelta = rawIrisLeftX - prevData.irisLeftX;
+            const irisLeftYDelta = rawIrisLeftY - prevData.irisLeftY;
+            const irisRightXDelta = rawIrisRightX - prevData.irisRightX;
+            const irisRightYDelta = rawIrisRightY - prevData.irisRightY;
+
+            const irisLeftX = Math.abs(irisLeftXDelta) < irisDeadZone ? prevData.irisLeftX : rawIrisLeftX;
+            const irisLeftY = Math.abs(irisLeftYDelta) < irisDeadZone ? prevData.irisLeftY : rawIrisLeftY;
+            const irisRightX = Math.abs(irisRightXDelta) < irisDeadZone ? prevData.irisRightX : rawIrisRightX;
+            const irisRightY = Math.abs(irisRightYDelta) < irisDeadZone ? prevData.irisRightY : rawIrisRightY;
+
+            prevData.irisLeftX = irisLeftX;
+            prevData.irisLeftY = irisLeftY;
+            prevData.irisRightX = irisRightX;
+            prevData.irisRightY = irisRightY;
+
+            // 🔥 增强版：基础位移放大
+            const baseLeftX = (irisLeftX - 0.35) * 160;
+            const baseLeftY = (irisLeftY - 0.4) * 130;
+            const baseRightX = (irisRightX - 0.55) * 160;
+            const baseRightY = (irisRightY - 0.4) * 130;
+
+            const leftPupilX = mapIrisMovement(baseLeftX, 45);
+            const leftPupilY = mapIrisMovement(baseLeftY, 35);
+            const rightPupilX = mapIrisMovement(baseRightX, 45);
+            const rightPupilY = mapIrisMovement(baseRightY, 35);
+
+            // 下巴张开程度（惊讶/兴奋时瞳孔放大）
+            const mouthTop = landmarks[13];
+            const mouthBottom = landmarks[14];
+            const rawJawOpen = mouthTop && mouthBottom ? Math.abs(mouthBottom.y - mouthTop.y) : 0;
+            const jawOpen = smoothValue(rawJawOpen, prevData.jawOpen, 0.3);
+            prevData.jawOpen = jawOpen;
+            const pupilScale = 1 + jawOpen * 0.2;
+
+            // 应用瞳孔和眨眼 - 使用渐进式眨眼
+            if (svgElements.eyeLeftInner && svgElements.eyeRightInner) {
+                if (isBlinking) {
+                    svgElements.eyeLeftInner.setAttribute('ry', 2 * pupilScale);
+                    svgElements.eyeLeftInner.setAttribute('rx', 32);
+                    svgElements.eyeRightInner.setAttribute('ry', 2 * pupilScale);
+                    svgElements.eyeRightInner.setAttribute('rx', 32);
+                } else {
+                    svgElements.eyeLeftInner.setAttribute('ry', 32 * pupilScale);
+                    svgElements.eyeLeftInner.setAttribute('rx', 32 * pupilScale);
+                    svgElements.eyeRightInner.setAttribute('ry', 32 * pupilScale);
+                    svgElements.eyeRightInner.setAttribute('rx', 32 * pupilScale);
+                    svgElements.eyeLeftInner.setAttribute('cx', 380 + eyeOffsetLeftX + leftPupilX);
+                    svgElements.eyeLeftInner.setAttribute('cy', 320 + eyeOffsetLeftY + leftPupilY);
+                    svgElements.eyeRightInner.setAttribute('cx', 520 + eyeOffsetRightX + rightPupilX);
+                    svgElements.eyeRightInner.setAttribute('cy', 320 + eyeOffsetRightY + rightPupilY);
+                }
+            }
+
+            // 高光跟随
+            if (svgElements.eyeLeftHighlight && svgElements.eyeRightHighlight && !isBlinking) {
+                svgElements.eyeLeftHighlight.setAttribute('cx', 396 + eyeOffsetLeftX + leftPupilX * 0.6);
+                svgElements.eyeLeftHighlight.setAttribute('cy', 306 + eyeOffsetLeftY + leftPupilY * 0.6);
+                svgElements.eyeRightHighlight.setAttribute('cx', 536 + eyeOffsetRightX + rightPupilX * 0.6);
+                svgElements.eyeRightHighlight.setAttribute('cy', 306 + eyeOffsetRightY + rightPupilY * 0.6);
+            }
+
+            // ============ 7. 嘴巴（线条/填充切换） ============
+            const mouthLeft = landmarks[61];
+            const mouthRight = landmarks[291];
+
+            if (svgElements.mouth && mouthLeft && mouthRight && mouthTop && mouthBottom) {
+                const mouthCenterX = (mouthLeft.x + mouthRight.x) / 2;
+                const mouthCenterY = (mouthTop.y + mouthBottom.y) / 2;
+                const mouthOffsetX = (mouthCenterX - 0.5) * 200;
+                const mouthOffsetY = (mouthCenterY - 0.53) * 150;
+                const mouthOpenness = Math.abs(mouthBottom.y - mouthTop.y);
+                const fillThreshold = 0.025;
+
+                let mouthPath;
+                if (mouthOpenness > fillThreshold) {
+                    svgElements.mouth.setAttribute('fill', '#E76F51');
+                    svgElements.mouth.setAttribute('stroke', '#C44D3D');
+                    svgElements.mouth.setAttribute('stroke-width', '2');
+                    const openDepth = Math.min(mouthOpenness * 600, 70);
+                    mouthPath = `M${420 + mouthOffsetX} ${420 + mouthOffsetY}
+                           Q${420 + mouthOffsetX} ${420 + mouthOffsetY + 8}
+                           ${422 + mouthOffsetX} ${420 + mouthOffsetY + openDepth * 0.3}
+                           Q${420 + mouthOffsetX} ${420 + mouthOffsetY + openDepth}
+                           ${450 + mouthOffsetX} ${420 + mouthOffsetY + openDepth + 10}
+                           Q${480 + mouthOffsetX} ${420 + mouthOffsetY + openDepth}
+                           ${478 + mouthOffsetX} ${420 + mouthOffsetY + openDepth * 0.3}
+                           Q${480 + mouthOffsetX} ${420 + mouthOffsetY + 8}
+                           ${480 + mouthOffsetX} ${420 + mouthOffsetY}
+                           Q${450 + mouthOffsetX} ${420 + mouthOffsetY - 5}
+                           ${420 + mouthOffsetX} ${420 + mouthOffsetY}
+                           Z`;
+                } else {
+                    svgElements.mouth.setAttribute('fill', 'none');
+                    svgElements.mouth.setAttribute('stroke', '#E76F51');
+                    svgElements.mouth.setAttribute('stroke-width', '10');
+                    const mouthWidth = Math.abs(mouthRight.x - mouthLeft.x);
+                    const smileCurve = 20 + (mouthWidth - 0.2) * 80;
+                    mouthPath = `M${420 + mouthOffsetX} ${420 + mouthOffsetY}
+                           Q${450 + mouthOffsetX} ${420 + mouthOffsetY + Math.max(smileCurve, 15)}
+                           ${480 + mouthOffsetX} ${420 + mouthOffsetY}`;
+                }
+                svgElements.mouth.setAttribute('d', mouthPath);
+            }
+
+            // 腮红透明度
+            if (svgElements.blushLeft && svgElements.blushRight) {
+                const mouthWidth = mouthLeft && mouthRight ? Math.abs(mouthRight.x - mouthLeft.x) : 0.2;
+                const blushOpacity = 0.5 + Math.min(mouthWidth * 2, 0.5);
+                svgElements.blushLeft.setAttribute('opacity', Math.max(0.3, blushOpacity));
+                svgElements.blushRight.setAttribute('opacity', Math.max(0.3, blushOpacity));
+            }
+        }
+
+        // ============ WebSocket 连接 ============
         function connectWebSocket() {
             if (ws) {
                 ws.close();
             }
-            
+
             connectionStatus.className = 'connecting';
             connectionStatus.textContent = `连接中：${WS_URL}`;
-            
+
             ws = new WebSocket(WS_URL);
-            
+
             ws.onopen = () => {
                 connectionStatus.className = 'connected';
                 connectionStatus.textContent = '✅ 已连接 WebSocket';
                 console.log('WebSocket 连接成功');
-                
-                // 注册为渲染端
                 ws.send(JSON.stringify({ type: 'register_renderer' }));
             };
-            
+
             ws.onclose = () => {
                 connectionStatus.className = 'disconnected';
                 connectionStatus.textContent = '❌ 未连接 WebSocket';
                 console.log('WebSocket 连接关闭');
                 setTimeout(connectWebSocket, 3000);
             };
-            
+
             ws.onerror = (error) => {
                 console.error('WebSocket 错误:', error);
             };
-            
+
             ws.onmessage = async (event) => {
                 try {
-                    // 处理 Blob 数据
                     let rawData = event.data;
                     if (rawData instanceof Blob) {
                         rawData = await rawData.text();
                     }
                     const data = JSON.parse(rawData);
                     if (data.type === 'facemesh' && data.landmarks) {
-                        updateAnimation(data.landmarks);
+                        // 使用完整的 468 个 landmarks 进行渲染计算
+                        applyExpression(data.landmarks);
                         dataCount++;
                         lastDataTime = Date.now();
-                        dataStats.textContent = `已接收 ${dataCount} 帧 | 延迟：${Date.now() - data.timestamp}ms`;
+                        const delay = Date.now() - data.timestamp;
+                        dataStats.textContent = `已接收 ${dataCount} 帧 | 延迟：${delay}ms | WebSocket: ${ws.readyState === 1 ? '✅ 连接中' : '⚠️ 断开'}`;
                     }
                 } catch (e) {
                     console.error('数据解析错误:', e, '原始数据:', event.data);
                 }
             };
         }
-        
-        // 保存并重新连接
+
+        // ============ 配置管理 ============
         function saveAndReconnect() {
             WS_URL = wsUrlInput.value.trim();
             if (!WS_URL) {
@@ -234,55 +714,18 @@
             alert('已保存配置，正在重新连接...');
             connectWebSocket();
         }
-        
-        // 更新动画
-        function updateAnimation(landmarks) {
-            if (!landmarks || landmarks.length < 468) return;
-            
-            // 计算头部旋转（使用鼻子和脸颊关键点）
-            const noseTip = landmarks[1];
-            const leftCheek = landmarks[234];
-            const rightCheek = landmarks[454];
-            
-            const headX = (noseTip.y - 0.5) * 0.3;
-            const headY = (noseTip.x - 0.5) * 0.3;
-            const headZ = ((leftCheek.x + rightCheek.x) / 2 - 0.5) * 0.2;
-            
-            // 应用头部变换
-            layerHead.setAttribute('transform', 
-                `translate(${headY * 100}, ${headX * 100}) rotate(${headZ * 30}, 440, 400)`);
-            
-            // 计算眼睛开合（使用上下眼睑关键点）
-            const leftEyeTop = landmarks[159];
-            const leftEyeBottom = landmarks[145];
-            const rightEyeTop = landmarks[386];
-            const rightEyeBottom = landmarks[374];
-            
-            const leftEyeOpen = 1 - Math.abs(leftEyeTop.y - leftEyeBottom.y) * 3;
-            const rightEyeOpen = 1 - Math.abs(rightEyeTop.y - rightEyeBottom.y) * 3;
-            
-            // 应用眼睛缩放（眨眼效果）
-            eyeLeft.setAttribute('transform', `scale(1, ${Math.max(0.1, leftEyeOpen)})`);
-            eyeRight.setAttribute('transform', `scale(1, ${Math.max(0.1, rightEyeOpen)})`);
-            
-            // 计算嘴巴开合（使用上下唇关键点）
-            const mouthTop = landmarks[13];
-            const mouthBottom = landmarks[14];
-            const mouthOpen = Math.abs(mouthTop.y - mouthBottom.y) * 2;
-            
-            // 应用嘴巴变形
-            const mouthPath = mouthOpen > 0.1 
-                ? `M400 450 Q440 ${480 - mouthOpen * 50} 480 450`
-                : `M400 450 Q440 480 480 450`;
-            mouth.setAttribute('d', mouthPath);
-            
-            // 尾巴轻微摆动（基于时间）
-            const tailWag = Math.sin(Date.now() / 500) * 10;
-            layerTail.setAttribute('transform', `rotate(${tailWag}, 310, 510)`);
+
+        // ============ 直播模式 ============
+        function toggleLiveMode() {
+            document.body.classList.toggle('live-mode-active');
+            const isActive = document.body.classList.contains('live-mode-active');
+            event.target.textContent = isActive ? '退出直播模式' : '📺 直播模式';
         }
-        
-        // 初始化连接
+
+        // ============ 初始化 ============
         connectWebSocket();
+        animateTail();
+        bubbleTimer = setInterval(createBubble, 3000);
     </script>
 </body>
 </html>
