@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FaceMesh 渲染端 - 电脑 A</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        h1 { color: white; margin-bottom: 10px; }
+        .status { color: #e0e7ff; margin-bottom: 20px; font-size: 14px; }
+        .container {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        #character {
+            width: 600px;
+            height: 600px;
+            background: linear-gradient(to bottom, #f0f9ff, #e0f2fe);
+            border-radius: 10px;
+        }
+        #connectionStatus {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: bold;
+        }
+        .connected { background: #d1fae5; color: #065f46; }
+        .disconnected { background: #fee2e2; color: #991b1b; }
+        .connecting { background: #fef3c7; color: #92400e; }
+        #dataStats {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #6b7280;
+            text-align: center;
+        }
+        .config-panel {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f3f4f6;
+            border-radius: 8px;
+        }
+        .config-panel label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #374151;
+        }
+        .config-panel input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .config-panel button {
+            margin-top: 10px;
+            padding: 8px 16px;
+            background: #10b981;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .config-panel button:hover {
+            background: #059669;
+        }
+    </style>
+</head>
+<body>
+    <h1>🦎 FaceMesh 渲染端</h1>
+    <div class="status">电脑 A - 接收数据驱动动画</div>
+    
+    <div class="container">
+        <svg id="character" viewBox="0 0 800 800" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <linearGradient id="eyeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#4CC9F0"/>
+                    <stop offset="100%" stop-color="#4CAF50"/>
+                </linearGradient>
+            </defs>
+
+            <!-- 身体组 -->
+            <g id="layer-body-group">
+                <!-- 尾巴 -->
+                <g id="layer-tail">
+                    <path id="tail" d="M140 340 Q90 450 140 560 Q200 660 310 610 L330 510 Z"
+                          fill="#FFF9E6" stroke="#000" stroke-width="18"/>
+                </g>
+
+                <!-- 头部组 -->
+                <g id="layer-head">
+                    <path id="head-shape" d="M320 190 Q400 110 570 190 Q650 270 670 400 Q650 530 590 610 Q530 660 420 670 Q320 660 260 610 Q220 560 220 510 L330 510 Q330 410 320 190 Z"
+                          fill="#FFD166" stroke="#000" stroke-width="18"/>
+                    
+                    <!-- 外鳃 -->
+                    <g id="layer-gills">
+                        <g id="gill-left" fill="#FF5A5F" stroke="#000" stroke-width="14">
+                            <path d="M320 210 Q270 170 290 130 Q330 170 320 210 Z"/>
+                            <path d="M310 250 Q250 230 270 190 Q310 230 310 250 Z"/>
+                            <path d="M300 290 Q250 280 270 250 Q310 280 300 290 Z"/>
+                        </g>
+                        <g id="gill-right" fill="#FF5A5F" stroke="#000" stroke-width="14">
+                            <path d="M560 210 Q610 170 590 130 Q550 170 560 210 Z"/>
+                            <path d="M570 250 Q630 230 610 190 Q570 230 570 250 Z"/>
+                            <path d="M580 290 Q630 280 610 250 Q570 280 580 290 Z"/>
+                        </g>
+                    </g>
+
+                    <!-- 眼睛 -->
+                    <g id="layer-eyes">
+                        <g id="eye-left">
+                            <ellipse cx="420" cy="340" rx="55" ry="65" fill="url(#eyeGrad)" stroke="#000" stroke-width="8"/>
+                            <ellipse cx="420" cy="340" rx="25" ry="30" fill="#000"/>
+                            <circle cx="430" cy="330" r="10" fill="white"/>
+                        </g>
+                        <g id="eye-right">
+                            <ellipse cx="500" cy="340" rx="55" ry="65" fill="url(#eyeGrad)" stroke="#000" stroke-width="8"/>
+                            <ellipse cx="500" cy="340" rx="25" ry="30" fill="#000"/>
+                            <circle cx="510" cy="330" r="10" fill="white"/>
+                        </g>
+                    </g>
+
+                    <!-- 嘴巴 -->
+                    <path id="mouth" d="M400 450 Q440 480 480 450" fill="none" stroke="#FF6B6B" stroke-width="8" stroke-linecap="round"/>
+                </g>
+            </g>
+        </svg>
+        
+        <div id="connectionStatus" class="disconnected">未连接 WebSocket</div>
+        <div id="dataStats">等待数据...</div>
+        
+        <div class="config-panel">
+            <label for="wsUrl">🔧 电脑 B（面捕端）WebSocket 地址：</label>
+            <input type="text" id="wsUrl" value="wss://192.168.1.100:16666/ws" placeholder="例如：wss://192.168.1.100:16666/ws">
+            <button onclick="saveAndReconnect()">💾 保存并重新连接</button>
+        </div>
+    </div>
+
+    <script>
+        // 配置
+        let WS_URL = localStorage.getItem('facemesh_ws_url') || 'ws://localhost:16666/ws';
+        document.getElementById('wsUrl').value = WS_URL;
+        
+        // 状态
+        let ws = null;
+        let lastDataTime = 0;
+        let dataCount = 0;
+        
+        // DOM 元素
+        const connectionStatus = document.getElementById('connectionStatus');
+        const dataStats = document.getElementById('dataStats');
+        const wsUrlInput = document.getElementById('wsUrl');
+        
+        // SVG 元素
+        const layerBody = document.getElementById('layer-body-group');
+        const layerHead = document.getElementById('layer-head');
+        const layerTail = document.getElementById('layer-tail');
+        const eyeLeft = document.getElementById('eye-left');
+        const eyeRight = document.getElementById('eye-right');
+        const mouth = document.getElementById('mouth');
+        
+        // 连接 WebSocket
+        function connectWebSocket() {
+            if (ws) {
+                ws.close();
+            }
+            
+            connectionStatus.className = 'connecting';
+            connectionStatus.textContent = `连接中：${WS_URL}`;
+            
+            ws = new WebSocket(WS_URL);
+            
+            ws.onopen = () => {
+                connectionStatus.className = 'connected';
+                connectionStatus.textContent = '✅ 已连接 WebSocket';
+                console.log('WebSocket 连接成功');
+                
+                // 注册为渲染端
+                ws.send(JSON.stringify({ type: 'register_renderer' }));
+            };
+            
+            ws.onclose = () => {
+                connectionStatus.className = 'disconnected';
+                connectionStatus.textContent = '❌ 未连接 WebSocket';
+                console.log('WebSocket 连接关闭');
+                setTimeout(connectWebSocket, 3000);
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket 错误:', error);
+            };
+            
+            ws.onmessage = async (event) => {
+                try {
+                    // 处理 Blob 数据
+                    let rawData = event.data;
+                    if (rawData instanceof Blob) {
+                        rawData = await rawData.text();
+                    }
+                    const data = JSON.parse(rawData);
+                    if (data.type === 'facemesh' && data.landmarks) {
+                        updateAnimation(data.landmarks);
+                        dataCount++;
+                        lastDataTime = Date.now();
+                        dataStats.textContent = `已接收 ${dataCount} 帧 | 延迟：${Date.now() - data.timestamp}ms`;
+                    }
+                } catch (e) {
+                    console.error('数据解析错误:', e, '原始数据:', event.data);
+                }
+            };
+        }
+        
+        // 保存并重新连接
+        function saveAndReconnect() {
+            WS_URL = wsUrlInput.value.trim();
+            if (!WS_URL) {
+                alert('请输入有效的 WebSocket 地址');
+                return;
+            }
+            localStorage.setItem('facemesh_ws_url', WS_URL);
+            alert('已保存配置，正在重新连接...');
+            connectWebSocket();
+        }
+        
+        // 更新动画
+        function updateAnimation(landmarks) {
+            if (!landmarks || landmarks.length < 468) return;
+            
+            // 计算头部旋转（使用鼻子和脸颊关键点）
+            const noseTip = landmarks[1];
+            const leftCheek = landmarks[234];
+            const rightCheek = landmarks[454];
+            
+            const headX = (noseTip.y - 0.5) * 0.3;
+            const headY = (noseTip.x - 0.5) * 0.3;
+            const headZ = ((leftCheek.x + rightCheek.x) / 2 - 0.5) * 0.2;
+            
+            // 应用头部变换
+            layerHead.setAttribute('transform', 
+                `translate(${headY * 100}, ${headX * 100}) rotate(${headZ * 30}, 440, 400)`);
+            
+            // 计算眼睛开合（使用上下眼睑关键点）
+            const leftEyeTop = landmarks[159];
+            const leftEyeBottom = landmarks[145];
+            const rightEyeTop = landmarks[386];
+            const rightEyeBottom = landmarks[374];
+            
+            const leftEyeOpen = 1 - Math.abs(leftEyeTop.y - leftEyeBottom.y) * 3;
+            const rightEyeOpen = 1 - Math.abs(rightEyeTop.y - rightEyeBottom.y) * 3;
+            
+            // 应用眼睛缩放（眨眼效果）
+            eyeLeft.setAttribute('transform', `scale(1, ${Math.max(0.1, leftEyeOpen)})`);
+            eyeRight.setAttribute('transform', `scale(1, ${Math.max(0.1, rightEyeOpen)})`);
+            
+            // 计算嘴巴开合（使用上下唇关键点）
+            const mouthTop = landmarks[13];
+            const mouthBottom = landmarks[14];
+            const mouthOpen = Math.abs(mouthTop.y - mouthBottom.y) * 2;
+            
+            // 应用嘴巴变形
+            const mouthPath = mouthOpen > 0.1 
+                ? `M400 450 Q440 ${480 - mouthOpen * 50} 480 450`
+                : `M400 450 Q440 480 480 450`;
+            mouth.setAttribute('d', mouthPath);
+            
+            // 尾巴轻微摆动（基于时间）
+            const tailWag = Math.sin(Date.now() / 500) * 10;
+            layerTail.setAttribute('transform', `rotate(${tailWag}, 310, 510)`);
+        }
+        
+        // 初始化连接
+        connectWebSocket();
+    </script>
+</body>
+</html>
